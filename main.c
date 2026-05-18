@@ -6,7 +6,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
-//#define DEBUG_MODE
+#define DEBUG_MODE
+size_t ConvertToFtime(size_t time){
+    size_t elapsed_seconds = (size_t)((double)time / 1000.0f);
+    return elapsed_seconds * 60;
+}
 int is_process_running(const char *process_name) {
     PROCESSENTRY32 pe32;
     HANDLE hProcessSnap;
@@ -75,6 +79,10 @@ typedef struct {
     size_t time_open;
     size_t time_in_focus;
     size_t time_doing_stuff;
+
+    size_t ftime_open;
+    size_t ftime_in_focus;
+    size_t ftime_doing_stuff;
     const char *process_name;
     const char *app_name;
 }AppInfo;
@@ -82,6 +90,7 @@ typedef struct {
 typedef struct{
     AppInfo app_array[MAX_APPS];
     size_t timer;
+    size_t ftime;
 }SaveInfo;
 int WriteSaveInfo(SaveInfo *save_info){
     FILE *f = fopen("time.data", "wb");
@@ -122,9 +131,14 @@ void CleanSaveInfo(SaveInfo *save_info){
     for(int i =0;i<MAX_APPS;i++){
         save_info->app_array[i].time_doing_stuff = 0;
         save_info->app_array[i].time_in_focus = 0;
-        save_info->app_array[i].time_open = 0;
+        save_info->app_array[i].time_open = 0;     
+
+        save_info->app_array[i].ftime_doing_stuff = 0;
+        save_info->app_array[i].ftime_in_focus = 0;
+        save_info->app_array[i].ftime_open = 0;
     }
     save_info->timer = 0;
+    save_info->ftime = 0;
 }
 float get_percent(float _value, float _max_value){
 	return _value / _max_value;
@@ -155,7 +169,7 @@ int IsAnykeyPressed(){
 }
 static POINT mpos = {0};
 static POINT prev_mpos = {0};
-void UpdateRunningAppInfo(SaveInfo *save_info, const int i, const int tick_timer){
+void UpdateRunningAppInfo(SaveInfo *save_info, const int i, const size_t tick_timer){
     static int time_key_press = 0;
     if( IsAnykeyPressed()){
         time_key_press = ACTIONS_SLEEP_DELAY;
@@ -165,12 +179,15 @@ void UpdateRunningAppInfo(SaveInfo *save_info, const int i, const int tick_timer
     }
     if(save_info->app_array[i].process_name != 0){
         if (is_process_running(save_info->app_array[i].process_name)) {
-            save_info->app_array[i].time_open+=tick_timer;
+            save_info->app_array[i].time_open += tick_timer;
+            //save_info->app_array[i].time_open =ConvertToFtime( save_info->app_array[i].ftime_open );
             if (is_process_in_focus(save_info->app_array[i].process_name)) {
-                save_info->app_array[i].time_in_focus+=tick_timer;
+                save_info->app_array[i].time_in_focus+= tick_timer ;
+                //save_info->app_array[i].time_in_focus =ConvertToFtime( save_info->app_array[i].ftime_in_focus );
                 
                 if(time_key_press > 0){
-                    save_info->app_array[i].time_doing_stuff+=tick_timer;
+                    save_info->app_array[i].time_doing_stuff+= tick_timer ;
+                    //save_info->app_array[i].time_doing_stuff =ConvertToFtime( save_info->app_array[i].ftime_doing_stuff );
                 }
             }
         } 
@@ -182,6 +199,14 @@ const char *FormatTimeAsTime(size_t time){
     int hour = (int)(minute/60);
     return TextFormat( "%d::%d::%d", hour, minute % 60, second % 60);
 }
+static ULONGLONG start_time[5] = {0};
+void UpdateCounter(int i){
+    start_time[i] = GetTickCount64();
+}   
+ULONGLONG GetTimePassed(int i ){
+    return GetTickCount64() - start_time[i];
+}
+
 //-mwindows
 int main() {
     size_t project_time = 0;
@@ -207,7 +232,6 @@ int main() {
     }
   
     int holding_the_clear= 0;
-
     int counter = 0;
     save_info.app_array[counter].process_name = "cmd.exe"; 
     save_info.app_array[counter++].app_name = "Command line"; 
@@ -244,9 +268,13 @@ int main() {
         Vector2 screen_center = {.x = screen_w * 0.5, .y = screen_h * 0.5};
         Rectangle clear_rect = {.x = screen_w-16 - 220, .y = 16, .width = 220, .height = 50};
         if(is_clock_active){
-            save_info.timer++;
+            save_info.ftime += GetTimePassed(0);// GetTickCount64() - start_time;
+            //size_t elapsed_seconds = (size_t)((double)save_info.ftime / 1000.0f);
+            save_info.timer = ConvertToFtime(save_info.ftime);//elapsed_seconds * 60;
             circle_color = GREEN;
+            printf("%zu\n", save_info.ftime);
         }
+        UpdateCounter(0);
         if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))press_to_untag = 0;
         if(CheckCollisionPointRec(mouse_pos, clear_rect) && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !press_to_untag && !is_clock_active){
             holding_the_clear = 1;
@@ -286,6 +314,7 @@ int main() {
             if(holding_the_clear){
                 DrawRectangle(clear_rect.x, clear_rect.y, clear_rect.width* get_percent(clear_activation_timer, clear_activation_time), clear_rect.height, RED);
             }
+            
             DrawText("Start new timer", clear_rect.x+16, clear_rect.y+16, 24, WHITE);
             
             DrawText(timer_text, screen_center.x - (text_w*0.5), screen_center.y + (60+20), font_size, WHITE);
@@ -309,11 +338,11 @@ int main() {
             if(update_tick_timer >= 10){
                 if(last_update_procces >= max_update_procces){
                     last_update_procces =0 ;
-                   
                 }
                 UpdateRunningAppInfo(&save_info, last_update_procces,   (const int)(10 * max_update_procces));
                 last_update_procces+=1;
                 update_tick_timer=0;
+                //UpdateCounter(0);
             }
             update_tick_timer++;
         }
