@@ -272,7 +272,7 @@ int main() {
             //size_t elapsed_seconds = (size_t)((double)save_info.ftime / 1000.0f);
             save_info.timer = ConvertToFtime(save_info.ftime);//elapsed_seconds * 60;
             circle_color = GREEN;
-            printf("%zu\n", save_info.ftime);
+            //printf("%zu\n", save_info.ftime);
         }
         UpdateCounter(0);
         if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))press_to_untag = 0;
